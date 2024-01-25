@@ -15,7 +15,6 @@ import {
   BiconomyPaymaster,
 } from '@biconomy/paymaster'
 import CreateSession from '@/components/CreateSession';
-import { toast, ToastContainer } from 'react-toastify';
 import erc20Abi from "@/utils/erc20Abi.json"
 import mockPoolAbi from "@/utils/mockPool.json"
 import mockStakeAbi from "@/utils/mockStake.json"

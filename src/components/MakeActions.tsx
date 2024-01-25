@@ -146,7 +146,7 @@ const MakeActions: React.FC<props> = ({
               <button onClick={async() => {
                   const { data } = await tokenA.populateTransaction.approve(
                     mockPool.address, // spender address
-                    ethers.utils.parseUnits("1002".toString(), 18)
+                    ethers.utils.parseUnits("1234".toString(), 18)
                   );
                   await sendUserOpWithData(tokenA.address, data, "0", sessionIDs[0], "Approving Token A to Pool");
                 }
@@ -171,7 +171,7 @@ const MakeActions: React.FC<props> = ({
               <button onClick={async() => {
                   const { data } = await tokenB.populateTransaction.approve(
                     mockStake.address, // spender address
-                    ethers.utils.parseUnits("105".toString(), 18)
+                    ethers.utils.parseUnits("200".toString(), 18)
                   );
                   await sendUserOpWithData(tokenB.address, data, "0", sessionIDs[2], "Approving Token B to Stake");
                 }
