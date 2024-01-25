@@ -3,15 +3,37 @@ import Image from "next/image";
 import { Inter } from "next/font/google";
 import styles from "@/styles/Home.module.css";
 
-const inter = Inter({ subsets: ["latin"] });
+import Head from 'next/head'
+import styles from '@/styles/Home.module.css'
+import { useState, useEffect } from 'react';
+import { IBundler, Bundler } from '@biconomy/bundler'
+import { BiconomySmartAccountV2, DEFAULT_ENTRYPOINT_ADDRESS } from "@biconomy/account"
+import { 
+  ECDSAOwnershipValidationModule, 
+  SessionKeyManagerModule, 
+  DEFAULT_ECDSA_OWNERSHIP_MODULE, 
+  DEFAULT_SESSION_KEY_MANAGER_MODULE,
+} from "@biconomy/modules";
+import { Contract, ethers  } from 'ethers'
+import { ChainId } from "@biconomy/core-types"
+import {
+  IPaymaster,
+  BiconomyPaymaster,
+} from '@biconomy/paymaster'
+import CreateSession from '@/components/CreateSession';
+import { toast, ToastContainer } from 'react-toastify';
+import ERC20Transfer from '@/components/ERC20Transfer';
+import erc20Abi from "@/utils/erc20Abi.json"
+import mockPoolAbi from "@/utils/mockPool.json"
+import mockStakeAbi from "@/utils/mockStake.json"
+
 
 export default function Home() {
   const [address, setAddress] = useState<string>("")
   const [loading, setLoading] = useState<boolean>(false);
   const [smartAccount, setSmartAccount] = useState<BiconomySmartAccountV2 | null>(null);
   const [provider, setProvider] = useState<ethers.providers.Provider | null>(null)
-  const [isSessionKeyModuleEnabled, setIsSessionKeyModuleEnabled] = useState <boolean>(false);
-  const [isSessionActive, setIsSessionActive] = useState <boolean>(false);
+
 
   const [tokenA, setTokenA] = useState<Contract>();
   const [tokenB, setTokenB] = useState<Contract>();
@@ -25,7 +47,7 @@ export default function Home() {
 
   const [sessionIDs, setSessionIDs] = useState<string[]>([]);
 
-  const abiSVMAddress = "0x1431610824308bCDfA7b6F9cCB451d370f2a2F01"
+  const [abiSVMAddress, setAbiSVMAddress] = useState<string>("0x1431610824308bCDfA7b6F9cCB451d370f2a2F01");
 
   const refreshBalances = async () => {
     if(tokenA && tokenB) {
@@ -47,25 +69,8 @@ export default function Home() {
   }
 
   useEffect(() => {
-    let checkSessionModuleEnabled = async () => {
-      if(!address || !smartAccount || !provider) {
-        setIsSessionKeyModuleEnabled(false);
-        return
-      }
-      try {
-        const isEnabled = await smartAccount.isModuleEnabled(DEFAULT_SESSION_KEY_MANAGER_MODULE)
-        console.log("isSessionKeyModuleEnabled", isEnabled);
-        setIsSessionKeyModuleEnabled(isEnabled);
-        return;
-      } catch(err: any) {
-        console.error(err)
-        setIsSessionKeyModuleEnabled(false);
-        return;
-      }
-    }
-    checkSessionModuleEnabled() 
     refreshBalances()
-  },[isSessionKeyModuleEnabled, address, smartAccount, provider, saTokenABalance, saTokenBBalance, stakeContractBalance])
+  },[address, smartAccount, provider])
 
   const bundler: IBundler = new Bundler({
     //https://dashboard.biconomy.io/
@@ -133,175 +138,7 @@ export default function Home() {
     }
   };
 
-  const createSession = async (enableSessionKeyModule: boolean) => {
-    toast.info('Creating Sessions...', {
-      position: "top-right",
-      autoClose: 15000,
-      hideProgressBar: false,
-      closeOnClick: true,
-      pauseOnHover: true,
-      draggable: true,
-      progress: undefined,
-      theme: "dark",
-      });
-    if (!address || !smartAccount || !provider) {
-      alert("Please connect wallet first")
-    }
-    try {
-      // -----> setMerkle tree tx flow
-      // create dapp side session key
-      const sessionSigner = ethers.Wallet.createRandom();
-      const sessionKeyEOA = await sessionSigner.getAddress();
-      console.log("sessionKeyEOA", sessionKeyEOA);
-      // BREWARE JUST FOR DEMO: update local storage with session key
-      window.localStorage.setItem("sessionPKey", sessionSigner.privateKey);
-
-      // generate sessionModule
-      const sessionModule = await SessionKeyManagerModule.create({
-        moduleAddress: DEFAULT_SESSION_KEY_MANAGER_MODULE,
-        smartAccountAddress: address,
-      });
-
-      /**
-       * Create Session Key Datas
-       */
-
-      let sessionKeyDatas = [];
-      
-      // Operation 1: Approve token A to Pool
-      const sessionKeyData1 = await getABISVMSessionKeyData(
-        sessionKeyEOA,
-        {
-          destContract: tokenA.address,
-          functionSelector: ethers.utils.hexDataSlice(
-            ethers.utils.id("approve(address,uint256)"),
-            0,
-            4
-          ), // approve function selector
-          valueLimit: ethers.utils.parseEther("0"), // value limit
-          // array of offsets, values, and conditions
-          rules: [
-            {
-              offset: 0,
-              condition: 0,
-              referenceValue: ethers.utils.hexZeroPad(mockPool.address, 32),
-            }, // equal
-            {
-              offset: 32,
-              condition: 1, // less than or equal;
-              referenceValue: ethers.utils.hexZeroPad(
-                "0x21E19E0C9BAB2400000",
-                32
-              ), // 0x21E19E0C9BAB2400000 = hex(1e^23) = 10,000 tokens
-            },
-          ],
-        }
-      )
-      sessionKeyDatas.push(sessionKeyData1);
-
-      // Operation 2: Swap Token A to Token B
-      const sessionKeyData2 = await getABISVMSessionKeyData(
-        sessionKeyEOA,
-        {
-          destContract: mockPool.address,
-          functionSelector: ethers.utils.hexDataSlice(
-            ethers.utils.id("swapExactTokensForTokens(uint256,uint256,uint256)"),
-            0,
-            4
-          ), // approve function selector
-          valueLimit: ethers.utils.parseEther("0"), // value limit
-          // array of offsets, values, and conditions
-          rules: [
-            {
-              offset: 0,
-              condition: 1, // less than or equal;
-              referenceValue: ethers.utils.hexZeroPad(
-                "0x3635C9ADC5DEA00000",
-                32
-              ), // 0x3635C9ADC5DEA00000 = hex(10^21) = 1,000 tokens
-            }, 
-            {
-              offset: 32,
-              condition: 1, // less than or equal;
-              referenceValue: ethers.utils.hexZeroPad(
-                "0x3635C9ADC5DEA00000",
-                32
-              ), // 0x3635C9ADC5DEA00000 = hex(10^21) = 1,000 tokens
-            },
-            {
-              offset: 64,
-              condition: 0, // equal;
-              referenceValue: ethers.utils.hexZeroPad(
-                ethers.utils.hexlify(0), // swap direction = 0 = tokenA=>tokenB
-                32
-              ),
-            },
-          ],
-        }
-      )
-      sessionKeyDatas.push(sessionKeyData2);
-
-      const sessionObjects = sessionKeyDatas.map((sessionKeyData) => {
-        return {
-          validUntil: 0,
-          validAfter: 0,
-          sessionValidationModule: abiSVMAddress,
-          sessionPublicKey: sessionKeyEOA,
-          sessionKeyData: sessionKeyData,
-        }
-      })
-      console.log("sessionObjects", sessionObjects);
-
-      /**
-       * Create Data for the Session Enabling Transaction
-       * We pass an array of session data objects to the createSessionData method
-       */
-      const sessionTxData = await sessionModule.createSessionData(sessionObjects);
-      console.log("sessionTxData", sessionTxData);
-      setSessionIDs([...sessionTxData.sessionIDInfo]);
-      console.log("sessionIDs", sessionIDs);
-
-      // tx to set session key
-      const setSessionTrx = {
-        to: DEFAULT_SESSION_KEY_MANAGER_MODULE, // session manager module address
-        data: sessionTxData.data,
-      };
-
-      const transactionArray = [];
-
-      if (enableSessionKeyModule) {
-        // -----> enableModule session manager module
-        const enableModuleTrx = await smartAccount.getEnableModuleData(
-          DEFAULT_SESSION_KEY_MANAGER_MODULE
-        );
-        transactionArray.push(enableModuleTrx);
-      }
-
-      transactionArray.push(setSessionTrx)
-
-      let partialUserOp = await smartAccount.buildUserOp(transactionArray);
-
-      const userOpResponse = await smartAccount.sendUserOp(
-        partialUserOp
-      );
-      console.log(`userOp Hash: ${userOpResponse.userOpHash}`);
-      const transactionDetails = await userOpResponse.wait();
-      console.log("txHash", transactionDetails.receipt.transactionHash);
-      setIsSessionActive(true)
-      toast.success(`Success! Session created succesfully`, {
-        position: "top-right",
-        autoClose: 18000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        progress: undefined,
-        theme: "dark",
-        });
-    } catch(err: any) {
-      console.error(err)
-    }
-  }
+  
 
   /** 
    * 
@@ -375,7 +212,7 @@ export default function Home() {
         skipBundlerGasEstimation: false,
         params: {
           sessionSigner: sessionSigner,
-          //sessionValidationModule: abiSVMAddress,
+          sessionValidationModule: abiSVMAddress,
           sessionID: sessionId,
         },
       });
@@ -442,23 +279,46 @@ export default function Home() {
           </div>
         </div>
 
-        <div className={styles.center}>
-          <Image
-            className={styles.logo}
-            src="/next.svg"
-            alt="Next.js Logo"
-            width={180}
-            height={37}
-            priority
+        {
+          smartAccount && provider && (
+            <CreateSession
+              smartAccount={smartAccount}
+              address={address}
+              provider={provider}
+              tokenA={tokenA}
+              tokenB={tokenB}
+              mockPool={mockPool}
+              mockStake={mockStake}
+              abiSVMAddress={abiSVMAddress}
+              setSessionIDs={setSessionIDs}
+            />
+          )
+        }
+
+        {
+          smartAccount && provider && (
+            <ERC20Transfer
+              smartAccount={smartAccount}
+              provider={provider}
+              address={address}
+            />
+          )
+        }
+
+        <div>
+          <ToastContainer
+            position="top-right"
+            autoClose={5000}
+            hideProgressBar={false}
+            newestOnTop={false}
+            closeOnClick
+            rtl={false}
+            pauseOnFocusLoss
+            draggable
+            pauseOnHover
+            theme="dark"
           />
-          {isSessionKeyModuleEnabled ? (
-            <button onClick={() => createSession(false)}>Create Session</button>
-          ) : (
-            <button onClick={() => createSession(true)}>
-              Enable Session Key Module and Create Session
-            </button>
-          )}
-          {isSessionActive ? (
+          {
             <div>
               <button onClick={async() => {
                   const { data } = await tokenA.populateTransaction.approve(
@@ -469,10 +329,8 @@ export default function Home() {
                 }
               }>Approve Token A to Pool</button>
             </div>
-          ):(
-            <div></div>
-          )}
-          {isSessionActive ? (
+          }
+          {
             <div>
               <button onClick={async() => {
                   const { data } = await mockPool.populateTransaction.swapExactTokensForTokens(
@@ -484,9 +342,7 @@ export default function Home() {
                 }
               }>Swap Token A to Token B</button>
             </div>
-          ):(
-            <div></div>
-          )}
+          }
         </div>
         <div>
           <h2>Balances</h2>
