@@ -34,6 +34,5 @@ export async function getABISVMSessionKeyData(
       permission.rules[i].referenceValue,
     ]);
   }
-  console.log("sessionKeyData built: ", sessionKeyData)
   return sessionKeyData;
 }

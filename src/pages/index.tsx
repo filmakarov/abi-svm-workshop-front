@@ -10,9 +10,7 @@ import { IBundler, Bundler } from '@biconomy/bundler'
 import { BiconomySmartAccountV2, DEFAULT_ENTRYPOINT_ADDRESS } from "@biconomy/account"
 import { 
   ECDSAOwnershipValidationModule, 
-  SessionKeyManagerModule, 
   DEFAULT_ECDSA_OWNERSHIP_MODULE, 
-  DEFAULT_SESSION_KEY_MANAGER_MODULE,
 } from "@biconomy/modules";
 import { Contract, ethers  } from 'ethers'
 import { ChainId } from "@biconomy/core-types"
@@ -22,7 +20,6 @@ import {
 } from '@biconomy/paymaster'
 import CreateSession from '@/components/CreateSession';
 import { toast, ToastContainer } from 'react-toastify';
-import ERC20Transfer from '@/components/ERC20Transfer';
 import erc20Abi from "@/utils/erc20Abi.json"
 import mockPoolAbi from "@/utils/mockPool.json"
 import mockStakeAbi from "@/utils/mockStake.json"
@@ -44,8 +41,8 @@ export default function Home() {
   const [saTokenBBalance, setSaTokenBBalance] = useState<string>("0");
   const [stakeContractBalance, setStakeContractBalance] = useState<string>("0");
   const [SAtoPoolTokenAAllowance, setSAtoPoolTokenAAllowance] = useState<string>("0");
-
-  const [sessionIDs, setSessionIDs] = useState<string[]>([]);
+  const [SAtoStakeTokenBAllowance, setSAtoStakeTokenBAllowance] = useState<string>("0");
+  const [SAStakeBalance, setSAStakeBalance] = useState<string>("0");
 
   const [abiSVMAddress, setAbiSVMAddress] = useState<string>("0x1431610824308bCDfA7b6F9cCB451d370f2a2F01");
 
@@ -56,16 +53,20 @@ export default function Home() {
         const accTokenBBalance = await tokenB.balanceOf(address)
         const stakeContractTokenBBalance = await tokenB.balanceOf("0x2C3aC29AFF6cbFCAeFb3EB3C13763141f79FC70B")
         const saToPoolTokenAAllowance = await tokenA.allowance(address, mockPool.address)
+        const saToStakeTokenBAllowance = await tokenB.allowance(address, mockStake.address)
+        const saStakeBalance = await mockStake.balances(address)
         
         setSaTokenABalance(ethers.utils.formatUnits(accTokenABalance, 18))
         setSaTokenBBalance(ethers.utils.formatUnits(accTokenBBalance, 18))
         setStakeContractBalance(ethers.utils.formatUnits(stakeContractTokenBBalance, 18))
         setSAtoPoolTokenAAllowance(ethers.utils.formatUnits(saToPoolTokenAAllowance, 18))
+        setSAtoStakeTokenBAllowance(ethers.utils.formatUnits(saToStakeTokenBAllowance, 18))
+        setSAStakeBalance(ethers.utils.formatUnits(saStakeBalance, 18))
       } catch(err: any) {
         console.error(err)
       }
     }
-    console.log("Balances Refreshed")
+    //console.log("Balances Refreshed")
   }
 
   useEffect(() => {
@@ -138,114 +139,6 @@ export default function Home() {
     }
   };
 
-  
-
-  /** 
-   * 
-   * BUILD AND SEND USER OP
-   * 
-  */
-
-  const sendUserOpWithData = async (
-    to: string,
-    data: string,
-    value: string,
-    sessionId: string,
-    message?: string
-  ) => {
-    if (!address || !smartAccount || !address) {
-      alert('Connect wallet first');
-      return;
-    }
-
-    const toastMessage = message + " " + sessionId;
-    try {
-      toast.info(toastMessage, {
-        position: "top-right",
-        autoClose: 15000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        progress: undefined,
-        theme: "dark",
-        });
-      
-      // get session key from local storage
-      const sessionKeyPrivKey = window.localStorage.getItem("sessionPKey");
-      console.log("sessionKeyPrivKey", sessionKeyPrivKey);
-      if (!sessionKeyPrivKey) {
-        alert("Session key not found please create session");
-        return;
-      }
-      
-      // USE SESION KEY AS SIGNER
-      const sessionSigner = new ethers.Wallet(sessionKeyPrivKey);
-      console.log("sessionSigner", sessionSigner);
-
-      // generate sessionModule
-      const sessionModule = await SessionKeyManagerModule.create({
-        moduleAddress: DEFAULT_SESSION_KEY_MANAGER_MODULE,
-        smartAccountAddress: address,
-      });
-      
-      // set active module to sessionModule
-      //smartAccount = smartAccount.setActiveValidationModule(sessionModule);
-      const smartAccountWithSKMActivated = smartAccount.setActiveValidationModule(sessionModule);
-      setSmartAccount(smartAccountWithSKMActivated);
-
-      const tx = {
-        to: to, 
-        data: data,
-        value: value,
-      };
-
-      console.log("tx", tx);
-
-      // build user op
-      let userOp = await smartAccount.buildUserOp([tx], {
-        overrides: {
-          // signature: "0x0000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000456b395c4e107e0302553b90d1ef4a32e9000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000db3d753a1da5a6074a9f74f39a0a779d3300000000000000000000000000000000000000000000000000000000000000c0000000000000000000000000000000000000000000000000000000000000016000000000000000000000000000000000000000000000000000000000000001800000000000000000000000000000000000000000000000000000000000000080000000000000000000000000bfe121a6dcf92c49f6c2ebd4f306ba0ba0ab6f1c000000000000000000000000da5289fcaaf71d52a80a254da614a192b693e97700000000000000000000000042138576848e839827585a3539305774d36b96020000000000000000000000000000000000000000000000000000000002faf08000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000041feefc797ef9e9d8a6a41266a85ddf5f85c8f2a3d2654b10b415d348b150dabe82d34002240162ed7f6b7ffbc40162b10e62c3e35175975e43659654697caebfe1c00000000000000000000000000000000000000000000000000000000000000"
-          // callGasLimit: 2000000, // only if undeployed account
-          // verificationGasLimit: 700000
-        },
-        skipBundlerGasEstimation: false,
-        params: {
-          sessionSigner: sessionSigner,
-          sessionValidationModule: abiSVMAddress,
-          sessionID: sessionId,
-        },
-      });
-
-      console.log("userOp", userOp);
-
-      // send user op
-      const userOpResponse = await smartAccount.sendUserOp(userOp, {
-        sessionSigner: sessionSigner,
-        sessionValidationModule: abiSVMAddress,
-        sessionID: sessionId,
-      });
-
-      console.log("userOpHash %o for Session Id %s", userOpResponse, sessionId);
-
-      const { receipt } = await userOpResponse.wait(1);
-      console.log("txHash", receipt.transactionHash);
-      const polygonScanlink = `https://mumbai.polygonscan.com/tx/${receipt.transactionHash}`
-      toast.success(<a target="_blank" href={polygonScanlink}>Success Click to view transaction</a>, {
-        position: "top-right",
-        autoClose: 18000,
-        hideProgressBar: false,
-        closeOnClick: true,
-        pauseOnHover: true,
-        draggable: true,
-        progress: undefined,
-        theme: "dark",
-        });
-    } catch(err: any) {
-      console.error(err);
-    }
-  }
-
   return (
     <>
       <Head>
@@ -254,30 +147,11 @@ export default function Home() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-      <main className={`${styles.main} ${inter.className}`}>
-        <div className={styles.description}>
-          <p>
-            Get started by editing&nbsp;
-            <code className={styles.code}>src/pages/index.tsx</code>
-          </p>
-          <div>
-            <a
-              href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              By{" "}
-              <Image
-                src="/vercel.svg"
-                alt="Vercel Logo"
-                className={styles.vercelLogo}
-                width={100}
-                height={24}
-                priority
-              />
-            </a>
-          </div>
-        </div>
+      <main className={styles.main}>
+        <h1>ABI SVM Demo</h1>
+        {!loading && !address && <button onClick={connect} className={styles.connect}>Connect to Web3</button>}
+        {loading && <p>Loading Smart Account...</p>}
+        {address && <h2>Smart Account: {address}</h2>}
 
         {
           smartAccount && provider && (
@@ -290,66 +164,18 @@ export default function Home() {
               mockPool={mockPool}
               mockStake={mockStake}
               abiSVMAddress={abiSVMAddress}
-              setSessionIDs={setSessionIDs}
             />
           )
         }
 
-        {
-          smartAccount && provider && (
-            <ERC20Transfer
-              smartAccount={smartAccount}
-              provider={provider}
-              address={address}
-            />
-          )
-        }
-
-        <div>
-          <ToastContainer
-            position="top-right"
-            autoClose={5000}
-            hideProgressBar={false}
-            newestOnTop={false}
-            closeOnClick
-            rtl={false}
-            pauseOnFocusLoss
-            draggable
-            pauseOnHover
-            theme="dark"
-          />
-          {
-            <div>
-              <button onClick={async() => {
-                  const { data } = await tokenA.populateTransaction.approve(
-                    mockPool.address, // spender address
-                    ethers.utils.parseUnits("1002".toString(), 18)
-                  );
-                  await sendUserOpWithData(tokenA.address, data, "0", sessionIDs[0], "Approving Token A to Pool");
-                }
-              }>Approve Token A to Pool</button>
-            </div>
-          }
-          {
-            <div>
-              <button onClick={async() => {
-                  const { data } = await mockPool.populateTransaction.swapExactTokensForTokens(
-                    ethers.utils.parseUnits("99".toString(), 18),
-                    ethers.utils.parseUnits("99".toString(), 18),
-                    ethers.utils.hexlify(0),
-                  );
-                  await sendUserOpWithData(mockPool.address, data, "0", sessionIDs[1], "Swapping Token A to Token B");
-                }
-              }>Swap Token A to Token B</button>
-            </div>
-          }
-        </div>
         <div>
           <h2>Balances</h2>
           <p>Smart Account Token A Balance: {saTokenABalance}</p>
           <p>Smart Account Token B Balance: {saTokenBBalance}</p>
           <p>Stake Contract Token B Balance: {stakeContractBalance}</p>
           <p>Token A allowance from SA to Pool: {SAtoPoolTokenAAllowance}</p>
+          <p>Token B allowance from SA to Stake: {SAtoStakeTokenBAllowance}</p>
+          <p>SA's Balance on the Stake Protocol: {SAStakeBalance}</p>
           <p> <button onClick={refreshBalances}>Refresh</button> </p>
         </div>
 
@@ -413,5 +239,5 @@ export default function Home() {
         </div>
       </main>
     </>
-  );
+  )
 }

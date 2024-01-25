@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import { SessionKeyManagerModule, DEFAULT_SESSION_KEY_MANAGER_MODULE  } from "@biconomy/modules";
 import { BiconomySmartAccountV2 } from "@biconomy/account"
-import { defaultAbiCoder } from "ethers/lib/utils";
+import MakeActions from "./MakeActions";
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import {getABISVMSessionKeyData} from "@/utils/sessionKey";
@@ -16,15 +16,15 @@ interface props {
   mockPool: ethers.Contract | undefined;
   mockStake: ethers.Contract | undefined;
   abiSVMAddress: string;
-  setSessionIDs: React.Dispatch<React.SetStateAction<any[]>>;
 }
 
 const CreateSession: React.FC<props> = ({ 
-    smartAccount, address, provider, tokenA, tokenB, mockPool, mockStake, abiSVMAddress, setSessionIDs
+    smartAccount, address, provider, tokenA, tokenB, mockPool, mockStake, abiSVMAddress
 }) => {
 
     const [isSessionKeyModuleEnabled, setIsSessionKeyModuleEnabled] = useState <boolean>(false);
     const [isSessionActive, setIsSessionActive] = useState <boolean>(false);
+    const [sessionIDs, setSessionIDs] = useState<string[]>([]);
 
     useEffect(() => {
         let checkSessionModuleEnabled = async () => {
@@ -154,6 +154,89 @@ const CreateSession: React.FC<props> = ({
             }
           )
           sessionKeyDatas.push(sessionKeyData2);
+
+          // Operation 3: Approve Token B to Stake
+          const sessionKeyData3 = await getABISVMSessionKeyData(
+            sessionKeyEOA,
+            {
+              destContract: tokenB.address,
+              functionSelector: ethers.utils.hexDataSlice(
+                ethers.utils.id("approve(address,uint256)"),
+                0,
+                4
+              ), // approve function selector
+              valueLimit: ethers.utils.parseEther("0"), // value limit
+              // array of offsets, values, and conditions
+              rules: [
+                {
+                  offset: 0,
+                  condition: 0,
+                  referenceValue: ethers.utils.hexZeroPad(mockStake.address, 32),
+                }, // equal
+                {
+                  offset: 32,
+                  condition: 1, // less than or equal;
+                  referenceValue: ethers.utils.hexZeroPad(
+                    "0x21E19E0C9BAB2400000",
+                    32
+                  ), // 0x21E19E0C9BAB2400000 = hex(1e^23) = 10,000 tokens
+                },
+              ],
+            }
+          )
+          sessionKeyDatas.push(sessionKeyData3);
+
+          // Operation 4: Stake Token B
+          const sessionKeyData4 = await getABISVMSessionKeyData(
+            sessionKeyEOA,
+            {
+              destContract: mockStake.address,
+              functionSelector: ethers.utils.hexDataSlice(
+                ethers.utils.id("stake(uint256)"),
+                0,
+                4
+              ), // approve function selector
+              valueLimit: ethers.utils.parseEther("0"), // value limit
+              // array of offsets, values, and conditions
+              rules: [
+                {
+                  offset: 0,
+                  condition: 1,
+                  referenceValue: ethers.utils.hexZeroPad(
+                    ethers.utils.parseEther("1000").toHexString(),
+                    32
+                  ),
+                }, 
+              ],
+            }
+          )
+          sessionKeyDatas.push(sessionKeyData4);
+
+          // Operation 5: Stake Token B
+          const sessionKeyData5 = await getABISVMSessionKeyData(
+            sessionKeyEOA,
+            {
+              destContract: mockStake.address,
+              functionSelector: ethers.utils.hexDataSlice(
+                ethers.utils.id("withdraw(uint256)"),
+                0,
+                4
+              ), // approve function selector
+              valueLimit: ethers.utils.parseEther("0"), // value limit
+              // array of offsets, values, and conditions
+              rules: [
+                {
+                  offset: 0,
+                  condition: 1,
+                  referenceValue: ethers.utils.hexZeroPad(
+                    ethers.utils.parseEther("1000").toHexString(),
+                    32
+                  ),
+                }, 
+              ],
+            }
+          )
+          sessionKeyDatas.push(sessionKeyData5);
     
           const sessionObjects = sessionKeyDatas.map((sessionKeyData) => {
             return {
@@ -164,14 +247,14 @@ const CreateSession: React.FC<props> = ({
               sessionKeyData: sessionKeyData,
             }
           })
-          console.log("sessionObjects", sessionObjects);
+          console.log("Session Objects Created ", sessionObjects);
     
           /**
            * Create Data for the Session Enabling Transaction
            * We pass an array of session data objects to the createSessionData method
            */
           const sessionTxData = await sessionModule.createSessionData(sessionObjects);
-          console.log("sessionTxData", sessionTxData);
+          //console.log("sessionTxData", sessionTxData);
           setSessionIDs([...sessionTxData.sessionIDInfo]);
     
           // tx to set session key
@@ -197,13 +280,14 @@ const CreateSession: React.FC<props> = ({
           const userOpResponse = await smartAccount.sendUserOp(
             partialUserOp
           );
-          console.log(`userOp Hash: ${userOpResponse.userOpHash}`);
+          //console.log(`userOp Hash: ${userOpResponse.userOpHash}`);
           const transactionDetails = await userOpResponse.wait();
           console.log("txHash", transactionDetails.receipt.transactionHash);
+          console.log("Sessions Enabled");
           setIsSessionActive(true)
-          toast.success(`Success! Session created succesfully`, {
+          toast.success(`Success! Sessions created succesfully`, {
             position: "top-right",
-            autoClose: 18000,
+            autoClose: 6000,
             hideProgressBar: false,
             closeOnClick: true,
             pauseOnHover: true,
@@ -217,27 +301,43 @@ const CreateSession: React.FC<props> = ({
       }
 
     return (
-        <div>
+    <div>
         <ToastContainer
           position="top-right"
           autoClose={5000}
-          hideProgressBar={false}
+          hideProgressBar={true}
           newestOnTop={false}
-          closeOnClick
+          closeOnClick={true}
           rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
+          pauseOnFocusLoss={false}
+          draggable={false}
+          pauseOnHover={false}
           theme="dark"
         />
-        {isSessionKeyModuleEnabled ? (
+        {isSessionKeyModuleEnabled&&!isSessionActive ? (
           <button onClick={() => createSession(false)}>Create Session</button>
-        ) : (
-          <button onClick={() => createSession(true)}>
+        ) : (<div></div>)}
+        {!isSessionKeyModuleEnabled&&!isSessionActive ? (
+        <button onClick={() => createSession(true)}>
             Enable Session Key Module and Create Session
-          </button>
-        )}
-      </div>
+        </button>
+        ) : (<div></div>)}
+      {
+        isSessionActive && (
+          <MakeActions
+            smartAccount={smartAccount}
+            provider={provider}
+            address={address}
+            tokenA={tokenA}
+            tokenB={tokenB}
+            mockPool={mockPool}
+            mockStake={mockStake}
+            abiSVMAddress={abiSVMAddress}
+            sessionIDs={sessionIDs}
+          />
+        )
+      }
+    </div>
     )
     
   }
