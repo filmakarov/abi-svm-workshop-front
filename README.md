@@ -1,3 +1,14 @@
+## Install
+
+### Install general dependencies
+`yarn`
+
+### Install Biconomy Packages
+```
+yarn add @biconomy/account @biconomy/bundler @biconomy/common @biconomy/core-types @biconomy/paymaster @biconomy/modules ethers@5.7.2 react-toastify
+```
+
+
 This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
 ## Getting Started

@@ -212,7 +212,7 @@ const CreateSession: React.FC<props> = ({
           )
           sessionKeyDatas.push(sessionKeyData4);
 
-          // Operation 5: Stake Token B
+          // Operation 5: withdraw Token B from the stake
           const sessionKeyData5 = await getABISVMSessionKeyData(
             sessionKeyEOA,
             {
@@ -221,7 +221,7 @@ const CreateSession: React.FC<props> = ({
                 ethers.utils.id("withdraw(uint256)"),
                 0,
                 4
-              ), // approve function selector
+              ), 
               valueLimit: ethers.utils.parseEther("0"), // value limit
               // array of offsets, values, and conditions
               rules: [
